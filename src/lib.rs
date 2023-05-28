@@ -3,15 +3,15 @@
 /// * applies particle bound-back to boundaries
 pub struct LBM<'b, const XDIM: usize, const YDIM: usize> {
     /// collision timescale parameter
-    pub tau: f64,
+    pub tau: f32,
     /// density at each lattice
-    pub rho: [[f64; YDIM]; XDIM],
+    pub rho: Vec<[f32; YDIM]>,
     /// velocity at each lattice
-    pub u: [[(f64, f64); YDIM]; XDIM],
+    pub u: Vec<[(f32, f32); YDIM]>,
     /// boundaries where fluid cannot pass or exist
     pub boundaries: Vec<&'b dyn Boundary>,
     /// lattice field
-    pub f: [[[f64; NDIR]; YDIM]; XDIM],
+    pub f: Vec<[[f32; NDIR]; YDIM]>,
 }
 
 trait Dot<T> {
@@ -39,7 +39,7 @@ pub trait Boundary {
 const NDIR: usize = 9;
 
 impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
-    pub fn new(rho_0: f64) -> Self {
+    pub fn new(rho_0: f32) -> Self {
         let mut lbm = Self {
             tau: 0.53,
             rho: Self::create_field(rho_0),
@@ -52,7 +52,7 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
         // using a given base average density
         for i in 0..X {
             for j in 0..Y {
-                let rho: f64 = lbm.f[i][j].iter().sum();
+                let rho: f32 = lbm.f[i][j].iter().sum();
                 for k in 0..NDIR {
                     lbm.f[i][j][k] *= rho_0 / rho;
                 }
@@ -65,8 +65,8 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
     }
 
     #[inline]
-    fn create_field<T: Copy>(fill: T) -> [[T; Y]; X] {
-        [[fill; Y]; X]
+    fn create_field<T: Copy>(fill: T) -> Vec<[T; Y]> {
+        vec![[fill; Y]; X]
     }
 
     /// execute a given number of steps of the simulation
@@ -110,8 +110,8 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
                         continue;
                     }
 
-                    let i_new = i as f64 + vx;
-                    let j_new = j as f64 + vy;
+                    let i_new = i as f32 + vx;
+                    let j_new = j as f32 + vy;
 
                     // use particle bounce-back when computing streaming operations which go out of bounds.
                     // this involves reverse the vector within the current lattice (i,j),
@@ -180,17 +180,17 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
         for i in 0..X {
             for j in 0..Y {
                 // density is the sum of the particle distribution within the lattice
-                let rho: f64 = self.f[i][j].iter().sum();
+                let rho: f32 = self.f[i][j].iter().sum();
 
                 // velocity of the lattice is the weighted sum of each 9 lattice sites
                 // incorporating their respective velocities
-                let x: f64 = self.f[i][j]
+                let x: f32 = self.f[i][j]
                     .iter()
                     .enumerate()
                     .map(|(k, s)| SITE_VECS[k].0 * s)
                     .sum();
 
-                let y: f64 = self.f[i][j]
+                let y: f32 = self.f[i][j]
                     .iter()
                     .enumerate()
                     .map(|(k, s)| SITE_VECS[k].1 * s)
@@ -208,7 +208,7 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
 }
 
 /// coordinates describing positions of sites in the D2Q9 lattice scheme
-const SITE_VECS: [(f64, f64); 9] = [
+const SITE_VECS: [(f32, f32); 9] = [
     (0.0, 0.0),   // center
     (1.0, 0.0),   // right
     (1.0, 1.0),   // bottom-right
@@ -221,7 +221,7 @@ const SITE_VECS: [(f64, f64); 9] = [
 ];
 
 /// weights of sites in the D2Q9 lattice scheme
-const WEIGHTS: [f64; 9] = [
+const WEIGHTS: [f32; 9] = [
     4.0 / 9.0,
     1.0 / 9.0,
     1.0 / 36.0,
@@ -274,7 +274,7 @@ mod test {
         sim.boundaries.push(&Circle::<1>);
 
         let average_density = sim.rho[0][0];
-        let expected_mass = (XDIM * YDIM - 1) as f64 * average_density;
+        let expected_mass = (XDIM * YDIM - 1) as f32 * average_density;
 
         // after running the simulation with 0 steps nothing should change,
         // which includes the fact that no boundaries will be checked and the
@@ -298,8 +298,8 @@ mod test {
         let mut final_it = -1;
         for it in 0..MAX_ITERS {
             // testing assistance
-            fn round_to(v: f64, p: u32) -> f64 {
-                (v * 10u32.pow(p) as f64).round()
+            fn round_to(v: f32, p: u32) -> f32 {
+                (v * 10u32.pow(p) as f32).round()
             }
 
             // continue running the simulation and checking for stable behavior
