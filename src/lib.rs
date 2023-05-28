@@ -1,14 +1,14 @@
-/// Lattice Boltzmann Method Simulator
+/// Lattice Boltzmann Method Simulator for Computational Fluid Dynamics (CFD)
+///
+/// * applies particle bound-back to boundaries
 pub struct LBM<'b, const XDIM: usize, const YDIM: usize> {
     /// collision timescale parameter
     pub tau: f64,
-    /// particle bound-back applied to boundaries
-    pub pbb: bool,
     /// density at each lattice
     pub rho: [[f64; YDIM]; XDIM],
     /// velocity at each lattice
     pub u: [[(f64, f64); YDIM]; XDIM],
-    /// boundaries
+    /// boundaries where fluid cannot pass or exist
     pub boundaries: Vec<&'b dyn Boundary>,
     /// lattice field
     pub f: [[[f64; NDIR]; YDIM]; XDIM],
@@ -46,7 +46,6 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
             u: Self::create_field((0.0, 0.0)),
             f: Self::create_field([1.0; NDIR]),
             boundaries: Vec::default(),
-            pbb: true,
         };
 
         // initialize the values of the lattice field
@@ -57,12 +56,10 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
                 for k in 0..NDIR {
                     lbm.f[i][j][k] *= rho_0 / rho;
                 }
-
-                lbm.f[i][j][1] *= 5.0;
             }
         }
 
-        lbm.calc_macro();
+        lbm.update_macro();
 
         lbm
     }
@@ -72,19 +69,18 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
         [[fill; Y]; X]
     }
 
-    pub fn sim(&mut self, steps: usize) {
+    /// execute a given number of steps of the simulation
+    pub fn run(&mut self, steps: usize) {
         for _ in 0..steps {
             self.clean_boundaries();
-            self.calc_macro();
+
+            self.update_macro();
             self.collide();
             self.stream();
-
-            if self.pbb {
-                self.reflect_boundaries();
-            }
         }
     }
 
+    /// zero-out values within boundaries before performing any additional computations
     fn clean_boundaries(&mut self) {
         for i in 0..X {
             for j in 0..Y {
@@ -99,7 +95,7 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
 
     /// stream step of the Lattice Boltzmann Method,
     /// where the distributions of the outer surrounding lattice sites
-    /// are propagated to neighboring latticies
+    /// are propagated to neighboring latticies.
     fn stream(&mut self) {
         let mut f_new = Self::create_field([0.0; NDIR]);
 
@@ -108,14 +104,24 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
 
             for i in 0..X {
                 for j in 0..Y {
+                    // ignore processing points inside of boundaries,
+                    // where fluid is unable to move (or doesn't exist)
+                    if self.boundaries.iter().any(|b| b.contains(i, j)) {
+                        continue;
+                    }
+
                     let i_new = (i as f64 + vx).rem_euclid(X as _);
                     let j_new = (j as f64 + vy).rem_euclid(Y as _);
 
                     let i_new = i_new as usize;
                     let j_new = j_new as usize;
 
+                    // use particle bounce-back when computing streaming operations
+                    // that collide with a boundary.
+                    // this involves reverse the vector within the current lattice (i,j),
+                    // rather than propagating to the point within the boundary (i_new, j_new).
                     if self.boundaries.iter().any(|b| b.contains(i_new, j_new)) {
-                        f_new[i][j][k] = self.f[i][j][k];
+                        f_new[i][j][SITE_REV[k]] = self.f[i][j][k];
                     } else {
                         f_new[i_new][j_new][k] = self.f[i][j][k];
                     }
@@ -147,20 +153,25 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
                     // equilibrium state lattice point
                     let f_eq_ijk = self.rho[i][j] * WEIGHTS[k] * (1.0 + p1 + p2 - p3);
 
-                    // uodate the lattice site using the LBM step
-                    self.f[i][j][k] -= (self.f[i][j][k] - f_eq_ijk) / self.tau;
+                    // update the lattice site using the LBM step
+                    self.f[i][j][k] += -(self.f[i][j][k] - f_eq_ijk) / self.tau;
                 }
             }
         }
     }
 
     /// recompute the values of `ρ` (density) and `u` (velocity)
-    /// based on the current state of the lattice field
-    fn calc_macro(&mut self) {
+    /// based on the current state of the lattice field.
+    ///
+    /// ## Note
+    /// if any value or parameters of the simulator are manually changed
+    /// outside the jurisdiction of the [`LBM::run()`], then this function
+    /// should be explicitly called.
+    fn update_macro(&mut self) {
         for i in 0..X {
             for j in 0..Y {
                 // density is the sum of the particle distribution within the lattice
-                let rho = self.f[i][j].iter().sum();
+                let rho: f64 = self.f[i][j].iter().sum();
 
                 // velocity of the lattice is the weighted sum of each 9 lattice sites
                 // incorporating their respective velocities
@@ -177,27 +188,30 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
                     .sum();
 
                 self.rho[i][j] = rho;
-                if rho > 0.0 {
-                    self.u[i][j] = (x / rho, y / rho);
-                }
-            }
-        }
-    }
-
-    fn reflect_boundaries(&mut self) {
-        for boundary in &self.boundaries {
-            for i in 0..X {
-                for j in 0..Y {
-                    if boundary.contains(i, j) {
-                        // reflect this point
-                    }
-                }
+                self.u[i][j] = if rho == 0.0 {
+                    (0.0, 0.0)
+                } else {
+                    (x / rho, y / rho)
+                };
             }
         }
     }
 }
 
-/// weights of sites in the D2Q9 lattice
+/// coordinates describing positions of sites in the D2Q9 lattice scheme
+const SITE_VECS: [(f64, f64); 9] = [
+    (0.0, 0.0),   // center
+    (1.0, 0.0),   // right
+    (1.0, 1.0),   // bottom-right
+    (0.0, 1.0),   // bottom
+    (-1.0, 1.0),  // bottom-left
+    (-1.0, 0.0),  // left
+    (-1.0, -1.0), // top-left
+    (0.0, -1.0),  // top
+    (1.0, -1.0),  // top-right
+];
+
+/// weights of sites in the D2Q9 lattice scheme
 const WEIGHTS: [f64; 9] = [
     4.0 / 9.0,
     1.0 / 9.0,
@@ -208,19 +222,6 @@ const WEIGHTS: [f64; 9] = [
     1.0 / 36.0,
     1.0 / 9.0,
     1.0 / 36.0,
-];
-
-/// coordinates describing positions of sites in the D2Q9 lattice
-const SITE_VECS: [(f64, f64); 9] = [
-    (0.0, 0.0),
-    (1.0, 0.0),
-    (1.0, 1.0),
-    (0.0, 1.0),
-    (-1.0, 1.0),
-    (-1.0, 0.0),
-    (-1.0, -1.0),
-    (0.0, -1.0),
-    (1.0, -1.0),
 ];
 
 /// reversed lattice directions used for reflective boundaries
@@ -237,7 +238,17 @@ mod test {
         const XDIM: usize = 9;
         const YDIM: usize = 9;
 
-        let mut s = LBM::<XDIM, YDIM>::new(100.0);
+        let mut sim = LBM::<XDIM, YDIM>::new(100.0);
+
+        // add initial external forces
+        for i in 0..XDIM {
+            for j in 0..YDIM {
+                sim.f[i][j][1] *= 2.0;
+            }
+        }
+
+        // update the macro parameters
+        sim.update_macro();
 
         // simple circular boundary to use for testing
         struct Circle<const X: isize>;
@@ -250,30 +261,65 @@ mod test {
         }
 
         // place a boundary to block the flow
-        s.boundaries.push(&Circle::<1>);
+        // (circle with a radius of 1)
+        sim.boundaries.push(&Circle::<1>);
+
+        let average_density = sim.rho[0][0];
+        let expected_mass = (XDIM * YDIM - 1) as f64 * average_density;
 
         // after running the simulation with 0 steps nothing should change,
         // which includes the fact that no boundaries will be check and the
         // distributions should be completely smooth
-        s.sim(0);
+        sim.run(0);
 
-        // the center should be zero'd out in terms of density and velocity because
-        // we have placed a boundary
-        s.sim(1);
-        assert!(s.rho[XDIM / 2][YDIM / 2] == 0.0);
-        assert!(s.u[XDIM / 2][YDIM / 2] == (0.0, 0.0));
-        for k in s.f[XDIM / 2][YDIM / 2] {
-            assert!(k == 0.0);
+        // the center should be zero'd out in terms of density and velocity
+        // once we step the simulation containing a placed boundary
+        sim.run(1);
+
+        assert_eq!(sim.rho[XDIM / 2][YDIM / 2], 0.0);
+        assert_eq!(sim.u[XDIM / 2][YDIM / 2], (0.0, 0.0));
+        for k in sim.f[XDIM / 2][YDIM / 2] {
+            assert_eq!(k, 0.0);
         }
 
         // continue running the simulation and checking for stable behavior
-        s.sim(1);
+        sim.run(200);
 
-        for (i, row) in s.rho.iter().enumerate() {
-            for (j, _) in row.iter().enumerate() {
-                print!("{:8.2?}", s.rho[i][j]);
+        // display the rho values of the field
+        let mut mass = 0.0;
+
+        println!("density grid:");
+        for row in sim.rho {
+            for density in row {
+                print!("{:8.2?}", density);
+                mass += density;
             }
             println!("");
         }
+
+        println!("mass: {}", mass);
+        // division can drift. allow rounding
+        assert_eq!(mass.round(), expected_mass.round());
+
+        fn round_to(v: f64, p: u32) -> f64 {
+            (v * 10u32.pow(p) as f64).round()
+        }
+
+        // verify that the system has reached a stable state with no motion
+        let mut final_it = -1;
+        const PRECISION: u32 = 3;
+        for it in 0..10000 {
+            sim.run(1);
+            if sim.u.iter().all(|r| {
+                r.iter()
+                    .all(|u| round_to(u.0, PRECISION) == 0.0 && round_to(u.1, PRECISION) == 0.0)
+            }) {
+                final_it = it;
+                break;
+            }
+        }
+
+        println!("convergence after: {}", final_it);
+        assert_ne!(final_it, -1);
     }
 }
