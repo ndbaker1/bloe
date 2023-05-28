@@ -110,21 +110,30 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
                         continue;
                     }
 
-                    let i_new = (i as f64 + vx).rem_euclid(X as _);
-                    let j_new = (j as f64 + vy).rem_euclid(Y as _);
+                    let i_new = i as f64 + vx;
+                    let j_new = j as f64 + vy;
 
+                    // use particle bounce-back when computing streaming operations which go out of bounds.
+                    // this involves reverse the vector within the current lattice (i,j),
+                    // rather than propagating to the point within the boundary (i_new, j_new).
+                    if i_new < 0.0 || i_new >= X as _ || j_new < 0.0 || j_new >= Y as _ {
+                        f_new[i][j][SITE_REV[k]] = self.f[i][j][k];
+                        continue;
+                    }
+
+                    // in-bounds safety passed.
                     let i_new = i_new as usize;
                     let j_new = j_new as usize;
 
                     // use particle bounce-back when computing streaming operations
                     // that collide with a boundary.
-                    // this involves reverse the vector within the current lattice (i,j),
-                    // rather than propagating to the point within the boundary (i_new, j_new).
                     if self.boundaries.iter().any(|b| b.contains(i_new, j_new)) {
                         f_new[i][j][SITE_REV[k]] = self.f[i][j][k];
-                    } else {
-                        f_new[i_new][j_new][k] = self.f[i][j][k];
+                        continue;
                     }
+
+                    // normal streaming update
+                    f_new[i_new][j_new][k] = self.f[i][j][k];
                 }
             }
         }
@@ -167,7 +176,7 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
     /// if any value or parameters of the simulator are manually changed
     /// outside the jurisdiction of the [`LBM::run()`], then this function
     /// should be explicitly called.
-    fn update_macro(&mut self) {
+    pub fn update_macro(&mut self) {
         for i in 0..X {
             for j in 0..Y {
                 // density is the sum of the particle distribution within the lattice
@@ -234,7 +243,7 @@ mod test {
     /// This is an example of the workflow for a simple single-phase flow
     /// with an obstacle.
     #[test]
-    fn sample() {
+    fn convergence() {
         const XDIM: usize = 9;
         const YDIM: usize = 9;
 
@@ -243,7 +252,7 @@ mod test {
         // add initial external forces
         for i in 0..XDIM {
             for j in 0..YDIM {
-                sim.f[i][j][1] *= 2.0;
+                sim.f[i][j][1] *= 5.0;
             }
         }
 
@@ -268,7 +277,7 @@ mod test {
         let expected_mass = (XDIM * YDIM - 1) as f64 * average_density;
 
         // after running the simulation with 0 steps nothing should change,
-        // which includes the fact that no boundaries will be check and the
+        // which includes the fact that no boundaries will be checked and the
         // distributions should be completely smooth
         sim.run(0);
 
@@ -282,34 +291,36 @@ mod test {
             assert_eq!(k, 0.0);
         }
 
-        // continue running the simulation and checking for stable behavior
-        sim.run(200);
-
-        // display the rho values of the field
-        let mut mass = 0.0;
-
-        println!("density grid:");
-        for row in sim.rho {
-            for density in row {
-                print!("{:8.2?}", density);
-                mass += density;
-            }
-            println!("");
-        }
-
-        println!("mass: {}", mass);
-        // division can drift. allow rounding
-        assert_eq!(mass.round(), expected_mass.round());
-
-        fn round_to(v: f64, p: u32) -> f64 {
-            (v * 10u32.pow(p) as f64).round()
-        }
+        const PRECISION: u32 = 1;
+        const MAX_ITERS: i32 = 5000;
 
         // verify that the system has reached a stable state with no motion
         let mut final_it = -1;
-        const PRECISION: u32 = 3;
-        for it in 0..10000 {
+        for it in 0..MAX_ITERS {
+            // testing assistance
+            fn round_to(v: f64, p: u32) -> f64 {
+                (v * 10u32.pow(p) as f64).round()
+            }
+
+            // continue running the simulation and checking for stable behavior
             sim.run(1);
+
+            // display the rho values of the field
+            let mut mass = 0.0;
+
+            println!("density grid:");
+            for j in 0..YDIM {
+                for i in 0..XDIM {
+                    print!("{:8.2?}", sim.rho[i][j]);
+                    mass += sim.rho[i][j];
+                }
+                println!("");
+            }
+
+            println!("mass: {}", mass);
+            // division can drift. allow rounding
+            assert_eq!(mass.round(), expected_mass.round());
+
             if sim.u.iter().all(|r| {
                 r.iter()
                     .all(|u| round_to(u.0, PRECISION) == 0.0 && round_to(u.1, PRECISION) == 0.0)
@@ -319,7 +330,7 @@ mod test {
             }
         }
 
-        println!("convergence after: {}", final_it);
         assert_ne!(final_it, -1);
+        println!("\nconvergence after: {}", final_it);
     }
 }
