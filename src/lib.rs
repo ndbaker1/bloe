@@ -89,12 +89,9 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
         for i in 0..X {
             for j in 0..Y {
                 if self.boundaries.iter().any(|b| b.contains(i, j)) {
-                    for k in 0..NDIR {
-                        self.f[i][j][k] = 0.0;
-                    }
-
-                    self.rho[i][j] = 0.0;
+                    self.f[i][j] = [0.0; NDIR];
                     self.u[i][j] = (0.0, 0.0);
+                    self.rho[i][j] = 0.0;
                 }
             }
         }
@@ -111,8 +108,11 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
 
             for i in 0..X {
                 for j in 0..Y {
-                    let i_new = (i as f64 + vx).rem_euclid(X as _) as usize;
-                    let j_new = (j as f64 + vy).rem_euclid(Y as _) as usize;
+                    let i_new = (i as f64 + vx).rem_euclid(X as _);
+                    let j_new = (j as f64 + vy).rem_euclid(Y as _);
+
+                    let i_new = i_new as usize;
+                    let j_new = j_new as usize;
 
                     if self.boundaries.iter().any(|b| b.contains(i_new, j_new)) {
                         f_new[i][j][k] = self.f[i][j][k];
@@ -230,15 +230,16 @@ const SITE_REV: [usize; 9] = [0, 5, 6, 7, 8, 1, 2, 3, 4];
 mod test {
     use super::*;
 
+    /// This is an example of the workflow for a simple single-phase flow
+    /// with an obstacle.
     #[test]
-    fn test_all() {
-        const XDIM: usize = 10;
-        const YDIM: usize = 10;
+    fn sample() {
+        const XDIM: usize = 9;
+        const YDIM: usize = 9;
 
-        // This is an example of the workflow for a simple single-phase flow
-        // with an obstacle.
         let mut s = LBM::<XDIM, YDIM>::new(100.0);
 
+        // simple circular boundary to use for testing
         struct Circle<const X: isize>;
         impl<const RADIUS: isize> Boundary for Circle<RADIUS> {
             fn contains(&self, x: usize, y: usize) -> bool {
@@ -248,13 +249,29 @@ mod test {
             }
         }
 
-        s.boundaries.push(&Circle::<3>);
+        // place a boundary to block the flow
+        s.boundaries.push(&Circle::<1>);
 
-        s.sim(10);
+        // after running the simulation with 0 steps nothing should change,
+        // which includes the fact that no boundaries will be check and the
+        // distributions should be completely smooth
+        s.sim(0);
+
+        // the center should be zero'd out in terms of density and velocity because
+        // we have placed a boundary
+        s.sim(1);
+        assert!(s.rho[XDIM / 2][YDIM / 2] == 0.0);
+        assert!(s.u[XDIM / 2][YDIM / 2] == (0.0, 0.0));
+        for k in s.f[XDIM / 2][YDIM / 2] {
+            assert!(k == 0.0);
+        }
+
+        // continue running the simulation and checking for stable behavior
+        s.sim(1);
 
         for (i, row) in s.rho.iter().enumerate() {
             for (j, _) in row.iter().enumerate() {
-                print!("{:.2?} ", s.rho[i][j]);
+                print!("{:8.2?}", s.rho[i][j]);
             }
             println!("");
         }
