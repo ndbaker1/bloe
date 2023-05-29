@@ -36,32 +36,17 @@ pub trait Boundary {
 }
 
 /// Number of points that exist in the 2D lattice based on the D2Q9 scheme
-const NDIR: usize = 9;
+pub const NDIR: usize = 9;
 
 impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
-    pub fn new(rho_0: f32) -> Self {
-        let mut lbm = Self {
+    pub fn new() -> Self {
+        Self {
             tau: 0.53,
-            rho: Self::create_field(rho_0),
+            rho: Self::create_field(1.0),
             u: Self::create_field((0.0, 0.0)),
             f: Self::create_field([1.0; NDIR]),
             boundaries: Vec::default(),
-        };
-
-        // initialize the values of the lattice field
-        // using a given base average density
-        for i in 0..X {
-            for j in 0..Y {
-                let rho: f32 = lbm.f[i][j].iter().sum();
-                for k in 0..NDIR {
-                    lbm.f[i][j][k] *= rho_0 / rho;
-                }
-            }
         }
-
-        lbm.update_macro();
-
-        lbm
     }
 
     #[inline]
@@ -113,20 +98,14 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
                     let i_new = i as f32 + vx;
                     let j_new = j as f32 + vy;
 
-                    // use particle bounce-back when computing streaming operations which go out of bounds.
-                    // this involves reverse the vector within the current lattice (i,j),
-                    // rather than propagating to the point within the boundary (i_new, j_new).
-                    if i_new < 0.0 || i_new >= X as _ || j_new < 0.0 || j_new >= Y as _ {
-                        f_new[i][j][SITE_REV[k]] = self.f[i][j][k];
-                        continue;
-                    }
-
-                    // in-bounds safety passed.
-                    let i_new = i_new as usize;
-                    let j_new = j_new as usize;
+                    // in-bounds safety pass.
+                    let i_new = i_new.rem_euclid(X as _) as usize;
+                    let j_new = j_new.rem_euclid(Y as _) as usize;
 
                     // use particle bounce-back when computing streaming operations
                     // that collide with a boundary.
+                    // this involves reverse the vector within the current lattice (i,j),
+                    // rather than propagating to the point within the boundary (i_new, j_new).
                     if self.boundaries.iter().any(|b| b.contains(i_new, j_new)) {
                         f_new[i][j][SITE_REV[k]] = self.f[i][j][k];
                         continue;
@@ -246,9 +225,20 @@ mod test {
     fn convergence() {
         const XDIM: usize = 9;
         const YDIM: usize = 9;
+        const DENSITY: f32 = 100.0;
 
-        let mut sim = LBM::<XDIM, YDIM>::new(100.0);
+        let mut sim = LBM::<XDIM, YDIM>::new();
 
+        // initialize the values of the lattice field
+        // using a given base average density
+        for i in 0..XDIM {
+            for j in 0..YDIM {
+                let rho: f32 = sim.f[i][j].iter().sum();
+                for k in 0..NDIR {
+                    sim.f[i][j][k] *= DENSITY / rho;
+                }
+            }
+        }
         // add initial external forces
         for i in 0..XDIM {
             for j in 0..YDIM {
