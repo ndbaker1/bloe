@@ -16,6 +16,9 @@ async fn main() {
     // create a simulation
     let mut sim = bloe::LBM::<XDIM, YDIM>::new();
 
+    init_scene(&mut sim);
+    add_boundaries(&mut sim, MODE);
+
     // event loop
     loop {
         // handle events
@@ -38,7 +41,7 @@ async fn main() {
             "press R to start/reset simulation",
             20.0,
             screen_height() - 20.0,
-            22.0,
+            28.0,
             GREEN,
         );
         // wait for the next render
