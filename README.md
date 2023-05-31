@@ -3,11 +3,11 @@
 </p>
 <p align="center">Lattice Boltzmann Method Simulator in Rust</p>
 
-<p>
-    <a href="https://ndbaker1.github.io/bloe/">
-        <h2 align="center">Online Demo 📺</h2>
-    </a>
-</p>
+<h3 align="center">
+	<a href="https://ndbaker1.github.io/bloe/">
+		Online Demo ☁
+	</a>
+</h2>
 
 ## Usage ⚡
 
