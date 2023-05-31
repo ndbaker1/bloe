@@ -19,17 +19,28 @@ async fn main() {
     // event loop
     loop {
         // handle events
-        if is_key_pressed(KeyCode::Escape) {
-            std::process::exit(0);
-        } else if is_key_pressed(KeyCode::R) {
+        if is_key_pressed(KeyCode::R) {
             init_scene(&mut sim);
             add_boundaries(&mut sim, MODE);
         }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if is_key_pressed(KeyCode::Escape) {
+            std::process::exit(0);
+        }
+
         // step the simulation
         sim.run(20);
         //draw the state of the simulation
         clear_background(WHITE);
         render_sim(&sim);
+        draw_text(
+            "press R to start/reset simulation",
+            20.0,
+            screen_height() - 20.0,
+            22.0,
+            GREEN,
+        );
         // wait for the next render
         next_frame().await;
     }
