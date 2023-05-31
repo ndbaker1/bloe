@@ -9,7 +9,7 @@ const XDIM: usize = 200;
 const YDIM: usize = 100;
 
 // initial external forces
-const FORCE_APPLIED: f32 = 30.0;
+const FORCE_APPLIED: f32 = 1.6;
 
 #[macroquad::main("LBM Simulator")]
 async fn main() {
@@ -26,7 +26,7 @@ async fn main() {
             add_boundaries(&mut sim, MODE);
         }
         // step the simulation
-        sim.run(1);
+        sim.run(20);
         //draw the state of the simulation
         clear_background(WHITE);
         render_sim(&sim);
@@ -103,9 +103,8 @@ fn add_boundaries(sim: &mut bloe::LBM<XDIM, YDIM>, mode: Mode) {
             sim.boundaries.push(&Circle::<10, 40, 50>);
         }
         Mode::OneCircle => {
-            const XDIM_M: isize = XDIM as isize / 2;
             const YDIM_M: isize = YDIM as isize / 2;
-            sim.boundaries.push(&Circle::<10, XDIM_M, YDIM_M>);
+            sim.boundaries.push(&Circle::<10, 50, YDIM_M>);
         }
     };
 }
@@ -118,16 +117,17 @@ fn init_scene(sim: &mut bloe::LBM<XDIM, YDIM>) {
     for i in 0..XDIM {
         for j in 0..YDIM {
             for k in 0..bloe::NDIR {
-                sim.f[i][j][k] += 0.001 * rand::gen_range(0.0, 1.0);
+                sim.f[i][j][k] += 0.01 * rand::gen_range(0.0, 1.0);
             }
         }
     }
 
-    const B: usize = 30;
-    for j in B..YDIM - B {
-        // increase force in the right (->) direction
-        // along the 1st column
-        sim.f[50][j][1] += FORCE_APPLIED * (1.0 + 0.2 * rand::gen_range(0.0, 1.0));
+    for i in 0..XDIM {
+        for j in 0..YDIM {
+            // increase force in the right (->) direction
+            // along the 1st column
+            sim.f[i][j][1] += FORCE_APPLIED * (1.0 + 0.2 * rand::gen_range(0.0, 1.0));
+        }
     }
 
     // initialize the values of the lattice field
