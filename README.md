@@ -28,3 +28,8 @@ Several parameters/constants of the simulation can be changed including:
 * Boundary Objects
 * Simulation Step Size
 
+## Motivation 🤔
+
+A dead-simple implementation of the lattice Boltzmann method with as few dependencies as possible in my favorite programming language 🦀.
+
+> The lattice Boltzmann method is an application of Boltzmann particle (microscopic) principles in a lattice grid to simulate computation fluid dynamics (CFD) without directly solving the Navier-Stokes equations (macroscopic)
