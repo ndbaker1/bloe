@@ -19,6 +19,11 @@ cargo run
 
 This will execute the [visualization demo](./src/bin/macroquad-demo.rs) locally
 
+<div align="center">
+  <video src="https://github.com/ndbaker1/bloe/assets/48701178/e9636a67-6b60-433f-9b41-ecb069ddcf1a" width="200px" />
+</div>
+
+
 ## Configuration ⚙
 
 Several parameters/constants of the simulation can be changed including:
