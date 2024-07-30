@@ -134,9 +134,9 @@ impl<'b, const X: usize, const Y: usize> LBM<'b, X, Y> {
                     let u = self.u[i][j];
 
                     let p1 = 3.0 * c.dot(u);
-                    // p2 = 9 / 2 * c.dot(u) ^ 2
-                    let p2 = p1.powi(2) / 2.0;
-                    let p3 = (3.0 / 2.0) * u.dot(u);
+                    // p2 = 3 / 2 * c.dot(u) ^ 2
+                    let p2 = p1.powi(2) / (3.0 * 2.0);
+                    let p3 = (9.0 / 2.0) * u.dot(u);
 
                     // equilibrium state lattice point
                     let f_eq_ijk = self.rho[i][j] * WEIGHTS[k] * (1.0 + p1 + p2 - p3);
