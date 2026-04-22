@@ -6,6 +6,6 @@ edition = "2021"
 [dependencies]
 getrandom = { version = "0.2.9", features = ["js"] }
 macroquad = "0.3.25"
-rand = "0.8.5"
+rand = "0.8.6"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
